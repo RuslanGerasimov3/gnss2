@@ -2,6 +2,10 @@
 #include <string.h>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
+
+#define QUEUE_LENGTH 10
+#define MAX_NMEA_LINE_LENGTH 128
 
 // Simulated NMEA data
 const char* simulatedData[] = {
@@ -13,34 +17,7 @@ const char* simulatedData[] = {
     "$GPZDA,223456.789,04,07,2023,00,00*6B"
 };
 
-void gnss_uart_rx(uint8_t data) {
-    // Simulate UART reception by printing received data
-    putchar(data);
-}
-
-/*
-// GNSS module simulation task
-void gnssModuleTask(void* parameter) {
-    TickType_t lastWakeTime = xTaskGetTickCount();
-
-    while (1) {
-        // Simulate UART RX interrupt by transmitting simulated NMEA data
-        for (int i = 0; i < sizeof(simulatedData) / sizeof(simulatedData[0]); i++) {
-            printf("\n");
-            const char* nmeaLine = simulatedData[i];
-            size_t lineLength = strlen(nmeaLine);
-
-            for (size_t j = 0; j < lineLength; j++) {
-                gnss_uart_rx(nmeaLine[j]); // Simulate UART RX interrupt
-            }
-
-            vTaskDelay(pdMS_TO_TICKS(1000)); // Transmit a burst every second
-        }
-
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1000));
-    }
-}
-*/
+QueueHandle_t nmeaQueue;
 
 // GNSS module simulation task
 void gnssModuleTask(void* parameter) {
@@ -50,9 +27,13 @@ void gnssModuleTask(void* parameter) {
         // Transmit burst of NMEA lines every second
         for (int i = 0; i < sizeof(simulatedData) / sizeof(simulatedData[0]); i++) {
             const char* nmeaLine = simulatedData[i];
+            size_t lineLength = strlen(nmeaLine);
 
-            // Simulate UART transmission by printing the NMEA line
-            printf("%s\n", nmeaLine);
+            // Send the NMEA line as a message through the message queue
+            for (size_t j = 0; j < lineLength; j++) {
+                char data = nmeaLine[j];
+                xQueueSend(nmeaQueue, &data, portMAX_DELAY);
+            }
 
             // Check if it's the last line of the burst
             if (strstr(nmeaLine, "$GPZDA") != NULL) {
@@ -67,21 +48,27 @@ void gnssModuleTask(void* parameter) {
 
 // NMEA parser task
 void nmeaParserTask(void* parameter) {
+    char nmeaLine[MAX_NMEA_LINE_LENGTH];
+    size_t lineIndex = 0;
+
     while (1) {
-        // TODO: Read data received from gnss_uart_rx() function
+        // Receive the NMEA line from the message queue
+        char data;
+        if (xQueueReceive(nmeaQueue, &data, portMAX_DELAY) == pdTRUE) {
+            // Store the received character in the line buffer
+            nmeaLine[lineIndex++] = data;
 
-        // TODO: Discard boot info
+            // Check if it's the end of the line or the buffer is full
+            if (data == '\n' || lineIndex >= MAX_NMEA_LINE_LENGTH) {
+                // Process the complete NMEA line
+                // TODO: Implement NMEA line processing and parsing logic here
 
-        // TODO: Verify checksum of NMEA messages
-
-        // TODO: Parse fix mode, position, and time
-
-        // TODO: Handle parsed data or discard NMEA message
-
-        vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay according to your requirements
+                // Reset the line buffer index
+                lineIndex = 0;
+            }
+        }
     }
 }
-
 // Consumer task
 void consumerTask(void* parameter) {
     while (1) {
@@ -94,10 +81,14 @@ void consumerTask(void* parameter) {
 }
 
 int main() {
-    // Create tasks
+    // Create the message queue
+    nmeaQueue = xQueueCreate(QUEUE_LENGTH, sizeof(char));
+
+    // Create the GNSS module task
     xTaskCreate(gnssModuleTask, "GNSS Module Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+
+    // Create the NMEA parser task
     xTaskCreate(nmeaParserTask, "NMEA Parser Task", configMINIMAL_STACK_SIZE, NULL, 2, NULL);
-    xTaskCreate(consumerTask, "Consumer Task", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
 
     // Start the FreeRTOS scheduler
     vTaskStartScheduler();
