@@ -18,6 +18,7 @@ void gnss_uart_rx(uint8_t data) {
     putchar(data);
 }
 
+/*
 // GNSS module simulation task
 void gnssModuleTask(void* parameter) {
     TickType_t lastWakeTime = xTaskGetTickCount();
@@ -36,7 +37,31 @@ void gnssModuleTask(void* parameter) {
             vTaskDelay(pdMS_TO_TICKS(1000)); // Transmit a burst every second
         }
 
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(10000));
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1000));
+    }
+}
+*/
+
+// GNSS module simulation task
+void gnssModuleTask(void* parameter) {
+    TickType_t lastWakeTime = xTaskGetTickCount();
+
+    while (1) {
+        // Transmit burst of NMEA lines every second
+        for (int i = 0; i < sizeof(simulatedData) / sizeof(simulatedData[0]); i++) {
+            const char* nmeaLine = simulatedData[i];
+
+            // Simulate UART transmission by printing the NMEA line
+            printf("%s\n", nmeaLine);
+
+            // Check if it's the last line of the burst
+            if (strstr(nmeaLine, "$GPZDA") != NULL) {
+                // Wait for 1 second before transmitting the next burst
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+        }
+
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1000));
     }
 }
 
