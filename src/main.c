@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+
 
 #define QUEUE_LENGTH 10
 #define MAX_NMEA_LINE_LENGTH 128
@@ -28,6 +30,8 @@ typedef struct {
 void gnssModuleTask(void* parameter) {
     TickType_t lastWakeTime = xTaskGetTickCount();
 
+    bool isIn3DFixMode = false;  // Track 3D fix mode
+
     while (1) {
         // Transmit burst of NMEA lines every second
         for (int i = 0; i < sizeof(simulatedData) / sizeof(simulatedData[0]); i++) {
@@ -40,6 +44,22 @@ void gnssModuleTask(void* parameter) {
                 xQueueSend(nmeaQueue, &data, portMAX_DELAY);
             }
 
+            // Check if it's the GPGSA sentence
+            if (strstr(nmeaLine, "$GPGSA") != NULL) {
+                // Check if it's entering or leaving 3D fix mode
+                if (strstr(nmeaLine, ",3,") != NULL) {
+                    if (!isIn3DFixMode) {
+                        isIn3DFixMode = true;
+                        printf("Entering 3D fix mode\n");
+                    }
+                } else {
+                    if (isIn3DFixMode) {
+                        isIn3DFixMode = false;
+                        printf("Leaving 3D fix mode\n");
+                    }
+                }
+            }
+
             // Check if it's the last line of the burst
             if (strstr(nmeaLine, "$GPZDA") != NULL) {
                 // Wait for 1 second before transmitting the next burst
@@ -47,30 +67,24 @@ void gnssModuleTask(void* parameter) {
             }
         }
 
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1000));
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(100));
     }
 }
 
-// NMEA parser task
+
 void nmeaParserTask(void* parameter) {
     char nmeaLine[MAX_NMEA_LINE_LENGTH];
     size_t lineIndex = 0;
-    int fixMode = 0;
-    BaseType_t fixModeChanged = pdFALSE;
+    int previousFixMode = 0;
     NMEAData data;
-    BaseType_t nmeaMessageFound = pdFALSE;
 
     while (1) {
         // Receive the NMEA line from the message queue
         char receivedData;
         if (xQueueReceive(nmeaQueue, &receivedData, portMAX_DELAY) == pdTRUE) {
             // Skip any text before the first NMEA message
-            if (!nmeaMessageFound) {
-                if (receivedData != '$') {
-                    continue;
-                } else {
-                    nmeaMessageFound = pdTRUE;
-                }
+            if (lineIndex == 0 && receivedData != '$') {
+                continue;
             }
 
             // Store the received character in the line buffer
@@ -97,20 +111,20 @@ void nmeaParserTask(void* parameter) {
                                 int tokenIndex = 0;
                                 while (token != NULL) {
                                     if (tokenIndex == 6) {
-                                        fixMode = atoi(token);
-                                        fixModeChanged = pdTRUE;
-                                    } else if (tokenIndex == 2) {
-                                        double latitude = atof(token);
-                                        // Parse latitude
-                                        // TODO: Implement latitude parsing logic
-                                    } else if (tokenIndex == 4) {
-                                        double longitude = atof(token);
-                                        // Parse longitude
-                                        // TODO: Implement longitude parsing logic
-                                    } else if (tokenIndex == 9) {
-                                        double altitude = atof(token);
-                                        // Parse altitude
-                                        // TODO: Implement altitude parsing logic
+                                        int fixMode = atoi(token);
+                                        if (fixMode != previousFixMode) {
+                                            if (fixMode == 3) {
+                                                // Entering 3D fix mode
+                                                data.fixMode = 3;
+                                                xQueueSend(consumerQueue, &data, 0);
+                                            } else {
+                                                // Leaving 3D fix mode
+                                                data.fixMode = 0;
+                                                xQueueSend(consumerQueue, &data, 0);
+                                            }
+                                            previousFixMode = fixMode;
+                                        }
+                                        break;
                                     }
                                     token = strtok(NULL, ",");
                                     tokenIndex++;
@@ -133,30 +147,33 @@ void nmeaParserTask(void* parameter) {
                 // Reset the line buffer index
                 lineIndex = 0;
             }
-        }
-
-        // Notify the consumer task if the fix mode has changed
-        if (fixModeChanged == pdTRUE) {
-            data.fixMode = fixMode;
-            xQueueSend(consumerQueue, &data, 0);
-            fixModeChanged = pdFALSE;
+        } else {
+            // No data received, wait for a short while to avoid busy-waiting
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
 }
 
 
+
+
+
 // Consumer task
 void consumerTask(void* parameter) {
     NMEAData data;
+    int previousFixMode = 0;
     printf("Consumer Task from Sky Labs GNSS\n");
     while (1) {
         // Receive data from the consumer queue
         if (xQueueReceive(consumerQueue, &data, portMAX_DELAY) == pdTRUE) {
-            // Notify user when entering or leaving 3D fix mode
-            if (data.fixMode == 3) {
-                printf("Entering 3D fix mode\n");
-            } else {
-                printf("Leaving 3D fix mode\n");
+            // Check fix mode changes
+            if (previousFixMode != data.fixMode) {
+                if (data.fixMode == 3) {
+                    printf("Entering 3D fix mode\n");
+                } else {
+                    printf("Leaving 3D fix mode\n");
+                }
+                previousFixMode = data.fixMode;
             }
 
             // Print position and time when in 3D fix mode
@@ -167,6 +184,11 @@ void consumerTask(void* parameter) {
         }
     }
 }
+
+
+
+
+
 
 int main() {
     // Create the message queues
