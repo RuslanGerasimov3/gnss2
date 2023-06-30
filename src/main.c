@@ -1,196 +1,88 @@
-/**
- * @file main.c
- * @author Alex Hoffman
- * @date 23 January 2023
- *
- * @verbatim
- ----------------------------------------------------------------------
- Copyright (C) Alexander Hoffman, 2023
- This program is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- any later version.
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- You should have received a copy of the GNU General Public License
- along with this program.  If not, see <http://www.gnu.org/licenses/>.
- ----------------------------------------------------------------------
- @endverbatim
- */
-
-#include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
-
-#include "main.h"
-#include "queue.h"
+#include <string.h>
+#include "FreeRTOS.h"
 #include "task.h"
 
-#include "gfx_ball.h"
-#include "gfx_draw.h"
-#include "gfx_font.h"
-#include "gfx_event.h"
-#include "gfx_sound.h"
-#include "gfx_utils.h"
-#include "gfx_FreeRTOS_utils.h"
-#include "gfx_print.h"
+// Simulated NMEA data
+const char* simulatedData[] = {
+    "$GPGGA,123456.789,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47",
+    "$GPGSA,A,3,05,07,08,12,19,26,28,,,,,,2.4,1.2,2.0*39",
+    "$GPZDA,123456.789,04,07,2023,00,00*6A",
+    "$GPGGA,223456.789,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*48",
+    "$GPGSA,A,3,05,07,08,12,19,26,28,,,,,,2.4,1.2,2.0*3A",
+    "$GPZDA,223456.789,04,07,2023,00,00*6B"
+};
 
-#include "AsyncIO.h"
+void gnss_uart_rx(uint8_t data) {
+    // Simulate UART reception by printing received data
+    putchar(data);
+}
 
-#include "demo_tasks.h"
-#include "async_sockets.h"
-#include "async_message_queues.h"
-#include "buttons.h"
-#include "draw.h"
-
-
-#ifdef TRACE_FUNCTIONS
-#include "tracer.h"
-#endif
-
-static TaskHandle_t StateMachine = NULL;
-static TaskHandle_t BufferSwap = NULL;
-
-SemaphoreHandle_t DrawSignal = NULL;
-
-void vSwapBuffers(void *pvParameters)
-{
-    TickType_t xLastWakeTime;
-    xLastWakeTime = xTaskGetTickCount();
-    const TickType_t frameratePeriod = 20;
+// GNSS module simulation task
+void gnssModuleTask(void* parameter) {
+    TickType_t lastWakeTime = xTaskGetTickCount();
 
     while (1) {
-        gfxDrawUpdateScreen();
-        gfxEventFetchEvents(FETCH_EVENT_BLOCK);
-        xSemaphoreGive(DrawSignal);
-        vTaskDelayUntil(&xLastWakeTime,
-                        pdMS_TO_TICKS(frameratePeriod));
+        // Simulate UART RX interrupt by transmitting simulated NMEA data
+        for (int i = 0; i < sizeof(simulatedData) / sizeof(simulatedData[0]); i++) {
+            printf("\n");
+            const char* nmeaLine = simulatedData[i];
+            size_t lineLength = strlen(nmeaLine);
+
+            for (size_t j = 0; j < lineLength; j++) {
+                gnss_uart_rx(nmeaLine[j]); // Simulate UART RX interrupt
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(1000)); // Transmit a burst every second
+        }
+
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(10000));
     }
 }
 
-int main(int argc, char *argv[])
-{
-    char *bin_folder_path = gfxUtilGetBinFolderPath(argv[0]);
+// NMEA parser task
+void nmeaParserTask(void* parameter) {
+    while (1) {
+        // TODO: Read data received from gnss_uart_rx() function
 
-    prints("Initializing: ");
+        // TODO: Discard boot info
 
-    //  Note PRINT_ERROR is not thread safe and is only used before the
-    //  scheduler is started. There are thread safe print functions in
-    //  gfx_Print.h, `prints` and `fprints` that work exactly the same as
-    //  `printf` and `fprintf`. So you can read the documentation on these
-    //  functions to understand the functionality.
+        // TODO: Verify checksum of NMEA messages
 
-    if (gfxDrawInit(bin_folder_path)) {
-        PRINT_ERROR("Failed to intialize drawing");
-        goto err_init_drawing;
+        // TODO: Parse fix mode, position, and time
+
+        // TODO: Handle parsed data or discard NMEA message
+
+        vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay according to your requirements
     }
-    else {
-        prints("drawing");
-    }
+}
 
-    if (gfxEventInit()) {
-        PRINT_ERROR("Failed to initialize events");
-        goto err_init_events;
-    }
-    else {
-        prints(", events");
-    }
+// Consumer task
+void consumerTask(void* parameter) {
+    while (1) {
+        // TODO: Wait for notifications from the NMEA parser task
 
-    if (gfxSoundInit(bin_folder_path)) {
-        PRINT_ERROR("Failed to initialize audio");
-        goto err_init_audio;
+        // TODO: Print notifications in real-time using printf()
+
+        vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay according to your requirements
     }
-    else {
-        prints(", and audio\n");
-    }
+}
 
-    if (gfxSafePrintInit()) {
-        PRINT_ERROR("Failed to init safe print");
-        goto err_init_safe_print;
-    }
+int main() {
+    // Create tasks
+    xTaskCreate(gnssModuleTask, "GNSS Module Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+    xTaskCreate(nmeaParserTask, "NMEA Parser Task", configMINIMAL_STACK_SIZE, NULL, 2, NULL);
+    xTaskCreate(consumerTask, "Consumer Task", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
 
-    atexit(aIODeinit);
-
-    //Load a second font for fun
-    gfxFontLoadFont(FPS_FONT, DEFAULT_FONT_SIZE);
-
-    if (xButtonsInit()) {
-        PRINT_ERROR("Failed to init buttons");
-        goto err_buttons_lock;
-    }
-
-    DrawSignal = xSemaphoreCreateBinary(); // Screen buffer locking
-    if (!DrawSignal) {
-        PRINT_ERROR("Failed to create draw signal");
-        goto err_draw_signal;
-    }
-
-    // Message sending
-    if (xTaskCreate(vStateMachineTask, "StateMachine",
-                    512, NULL,
-                    configMAX_PRIORITIES - 1, &StateMachine) != pdPASS) {
-        PRINT_TASK_ERROR("StateMachine");
-        goto err_statemachinetask;
-    }
-    if (xTaskCreate(vSwapBuffers, "BufferSwapTask",
-                    512, NULL, configMAX_PRIORITIES,
-                    &BufferSwap) != pdPASS) {
-        PRINT_TASK_ERROR("BufferSwapTask");
-        goto err_bufferswap;
-    }
-
-    /** Demo Tasks */
-    if (xCreateDemoTasks()) {
-        goto err_demotasks;
-    }
-
-    /** SOCKETS */
-    if (xCreateSocketTasks()) {
-        goto err_sockettasks;
-    }
-
-    /** POSIX MESSAGE QUEUES */
-    if (xCreateMessageQueueTasks()) {
-        goto err_messagequeuetasks;
-    }
-
-    /** State Machine */
-    if (xStateMachineInit()) {
-        goto err_statemachine;
-    }
-
-    gfxFUtilPrintTaskStateList();
-
+    // Start the FreeRTOS scheduler
     vTaskStartScheduler();
 
-    return EXIT_SUCCESS;
+    // The scheduler should never return, but if it does, handle the error
+    while (1) {
+        // Handle error
+    }
 
-err_statemachine:
-    vDeleteMessageQueueTasks();
-err_messagequeuetasks:
-    vDeleteSocketTasks();
-err_sockettasks:
-    vDeleteDemoTasks();
-err_demotasks:
-    vTaskDelete(BufferSwap);
-err_bufferswap:
-    vTaskDelete(StateMachine);
-err_statemachinetask:
-    vSemaphoreDelete(DrawSignal);
-err_draw_signal:
-    vButtonsExit();
-err_buttons_lock:
-    gfxSoundExit();
-err_init_audio:
-    gfxEventExit();
-err_init_events:
-    gfxDrawExit();
-err_init_drawing:
-    gfxSafePrintExit();
-err_init_safe_print:
-    return EXIT_FAILURE;
+    return 0;
 }
 
 // cppcheck-suppress unusedFunction
@@ -210,3 +102,4 @@ __attribute__((unused)) void vApplicationIdleHook(void)
     nanosleep(&xTimeToSleep, &xTimeSlept);
 #endif
 }
+
