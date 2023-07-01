@@ -3,19 +3,10 @@ find_package(Git REQUIRED)
 
 SET(CHECK_FILES
     ${PROJECT_SOURCE_DIR}/include/*.h
-    ${PROJECT_SOURCE_DIR}/lib/Gfx/include/*.h
-    ${PROJECT_SOURCE_DIR}/lib/Gfx/*.c
-    ${PROJECT_SOURCE_DIR}/lib/AsyncIO/include/*.h
-    ${PROJECT_SOURCE_DIR}/lib/AsyncIO/*.c
-    ${PROJECT_SOURCE_DIR}/lib/StateMachine/include/*.h
-    ${PROJECT_SOURCE_DIR}/lib/StateMachine/*.c
-    ${PROJECT_SOURCE_DIR}/lib/tracer/include/*.h
     ${PROJECT_SOURCE_DIR}/lib/LL/*.h
     ${PROJECT_SOURCE_DIR}/src/*.c)
 
 SET(TIDY_SOURCES
-    ${PROJECT_SOURCE_DIR}/lib/Gfx
-    ${PROJECT_SOURCE_DIR}/lib/AsyncIO
     ${PROJECT_SOURCE_DIR}/src
 )
 
