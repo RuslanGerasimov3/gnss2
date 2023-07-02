@@ -48,27 +48,29 @@ void gnssModuleTask(void* parameter) {
                 char data = nmeaLine[j];
                 xQueueSend(nmeaQueue, &data, portMAX_DELAY);
             }
-
+ /*
             // Check if it's the GPGSA sentence
             if (strstr(nmeaLine, "$GPGSA") != NULL) {
+            	//printf("Debug NMEA from gnssmodule line: %s\n", nmeaLine);
                 // Check if it's entering or leaving 3D fix mode
                 if (strstr(nmeaLine, ",3,") != NULL) {
                     if (!isIn3DFixMode) {
                         isIn3DFixMode = true;
-                        printf("Entering 3D fix mode\n");
+                        printf("GNSS module check: Entering 3D fix mode\n");
                     }
                 } else {
                     if (isIn3DFixMode) {
                         isIn3DFixMode = false;
-                        printf("Leaving 3D fix mode\n");
+                        printf("GNSS module check: Leaving 3D fix mode\n");
                     }
                 }
             }
+// */
 
             // Check if it's the last line of the burst
             if (strstr(nmeaLine, "$GPZDA") != NULL) {
                 // Wait for 1 second before transmitting the next burst
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
 
@@ -81,6 +83,7 @@ void nmeaParserTask(void* parameter) {
     char nmeaLine[MAX_NMEA_LINE_LENGTH];
     size_t lineIndex = 0;
     int previousFixMode = 0;
+    bool isIn3DFixMode = false; // Track 3D fix mode
     NMEAData data;
 
     while (1) {
@@ -100,52 +103,37 @@ void nmeaParserTask(void* parameter) {
                 // Process the complete NMEA line
                 nmeaLine[lineIndex] = '\0';
 
-                // Verify checksum of NMEA messages of interest
-                if (strstr(nmeaLine, "$GPGGA") != NULL || strstr(nmeaLine, "$GPZDA") != NULL) {
-                    char* checksumPtr = strchr(nmeaLine, '*');
-                    if (checksumPtr != NULL) {
-                        unsigned int checksum = 0;
-                        char* nmeaPtr = nmeaLine + 1; // Skip '$'
-                        while (nmeaPtr < checksumPtr) {
-                            checksum ^= *nmeaPtr++;
+                // Parse fix mode, position, and time
+                if (strstr(nmeaLine, "$GPGSA") != NULL) {
+                	//printf("Debug NMEA from nmeaparser line: %s\n", nmeaLine);
+                	// Check if it's entering or leaving 3D fix mode
+                  if (strstr(nmeaLine, ",3,") != NULL) {
+
+                                    // Entering 3D fix mode
+                                    //printf("Nmea parser: Entering 3D fix mode\n");
+                                    //isIn3DFixMode = true;
+                                    data.fixMode = 3;
+                                    xQueueSend(consumerQueue, &data, 0);
+    
+
+
+                  }  else {
+                  	//In3DFixMode = false;
+                                    // Leaving 3D fix mode
+                                    //printf("Nmea parser: Leaving 3D fix mode\n");
+                                    //isIn3DFixMode = false;
+                                    data.fixMode = 0;
+                                    xQueueSend(consumerQueue, &data, 0);                  	
+                  }
+                } else if (strstr(nmeaLine, "$GPZDA") != NULL) {
+                    char* token = strtok(nmeaLine, ",");
+                    int tokenIndex = 0;
+                    while (token != NULL) {
+                        if (tokenIndex == 1) {
+                            strncpy(data.timestamp, token, sizeof(data.timestamp));
                         }
-                        if (checksum == strtol(checksumPtr + 1, NULL, 16)) {
-                            // Parse fix mode, position, and time
-                            if (strstr(nmeaLine, "$GPGGA") != NULL) {
-                                char* token = strtok(nmeaLine, ",");
-                                int tokenIndex = 0;
-                                while (token != NULL) {
-                                    if (tokenIndex == 6) {
-                                        int fixMode = atoi(token);
-                                        if (fixMode != previousFixMode) {
-                                            if (fixMode == 3) {
-                                                // Entering 3D fix mode
-                                                data.fixMode = 3;
-                                                xQueueSend(consumerQueue, &data, 0);
-                                            } else {
-                                                // Leaving 3D fix mode
-                                                data.fixMode = 0;
-                                                xQueueSend(consumerQueue, &data, 0);
-                                            }
-                                            previousFixMode = fixMode;
-                                        }
-                                        break;
-                                    }
-                                    token = strtok(NULL, ",");
-                                    tokenIndex++;
-                                }
-                            } else if (strstr(nmeaLine, "$GPZDA") != NULL) {
-                                char* token = strtok(nmeaLine, ",");
-                                int tokenIndex = 0;
-                                while (token != NULL) {
-                                    if (tokenIndex == 1) {
-                                        strncpy(data.timestamp, token, sizeof(data.timestamp));
-                                    }
-                                    token = strtok(NULL, ",");
-                                    tokenIndex++;
-                                }
-                            }
-                        }
+                        token = strtok(NULL, ",");
+                        tokenIndex++;
                     }
                 }
 
@@ -163,32 +151,38 @@ void nmeaParserTask(void* parameter) {
 
 
 
+
+
+
 // Consumer task
 void consumerTask(void* parameter) {
     NMEAData data;
-    int previousFixMode = 0;
-    printf("Consumer Task from Sky Labs GNSS\n");
+    bool isIn3DFixMode = false; // Track 3D fix mode
+
     while (1) {
-        // Receive data from the consumer queue
+        // Receive fix mode data from the NMEA parser task
         if (xQueueReceive(consumerQueue, &data, portMAX_DELAY) == pdTRUE) {
-            // Check fix mode changes
-            if (previousFixMode != data.fixMode) {
-                if (data.fixMode == 3) {
-                    printf("Entering 3D fix mode\n");
-                } else {
-                    printf("Leaving 3D fix mode\n");
-                }
-                previousFixMode = data.fixMode;
+            if (data.fixMode == 3 && !isIn3DFixMode) {
+                // Entering 3D fix mode
+                printf("Consumer task: Entering 3D fix mode\n");
+                printf("Consumer task: Time: %s\n", data.timestamp);                
+                isIn3DFixMode = true;
+            } else if (data.fixMode == 0 && isIn3DFixMode) {
+                // Leaving 3D fix mode
+                printf("Consumer task: Leaving 3D fix mode\n");
+                isIn3DFixMode = false;
             }
 
             // Print position and time when in 3D fix mode
-            if (data.fixMode == 3) {
-                printf("Position: %.6f, %.6f, %.2f\n", data.latitude, data.longitude, data.altitude);
-                printf("Time: %s\n", data.timestamp);
+            if (isIn3DFixMode) {
+                //printf("Consumer task: Position: %s\n", data.position);
+
             }
         }
     }
 }
+
+
 
 
 
