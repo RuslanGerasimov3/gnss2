@@ -61,6 +61,33 @@ void gnssModuleTask(void* parameter) {
     }
 }
 
+bool verifyChecksum(const char* nmeaLine) {
+    // Verify the checksum of the NMEA line
+    int checksum = 0;
+    size_t i = 1; // Skip the leading '$'
+    char c = nmeaLine[i++];
+    while (c != '*' && c != '\0') {
+        checksum ^= c;
+        c = nmeaLine[i++];
+    }
+
+    if (c == '*') {
+        // Parse the checksum value
+        char checksumStr[3];
+        checksumStr[0] = nmeaLine[i++];
+        checksumStr[1] = nmeaLine[i++];
+        checksumStr[2] = '\0';
+
+        // Convert the checksum value from hexadecimal to integer
+        int receivedChecksum = strtol(checksumStr, NULL, 16);
+
+        // Compare the received checksum with the calculated checksum
+        return checksum == receivedChecksum;
+    }
+
+    return false; // Invalid NMEA line without a checksum
+}
+
 // NMEA parser task
 void nmeaParserTask(void* parameter) {
     char nmeaLine[MAX_NMEA_LINE_LENGTH];
@@ -84,7 +111,8 @@ void nmeaParserTask(void* parameter) {
             if (receivedData == '\n' || lineIndex >= MAX_NMEA_LINE_LENGTH) {
                 // Process the complete NMEA line
                 nmeaLine[lineIndex] = '\0';
-
+                // Verify the checksum of the NMEA message
+                if (verifyChecksum(nmeaLine) || 1) {
                 // Parse fix mode, position, and time
                 if (strstr(nmeaLine, "$GPGSA") != NULL) {
                     // Check if it's entering or leaving 3D fix mode
@@ -134,6 +162,7 @@ void nmeaParserTask(void* parameter) {
 
                 // Reset the line buffer index
                 lineIndex = 0;
+             }
             }
         } else {
             // No data received, wait for a short while to avoid busy-waiting
