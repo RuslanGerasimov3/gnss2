@@ -9,6 +9,7 @@
 
 #define QUEUE_LENGTH 10
 #define MAX_NMEA_LINE_LENGTH 128
+#define MAX_POSITION_LENGTH 128
 
 // Simulated NMEA data
 
@@ -25,9 +26,9 @@ QueueHandle_t consumerQueue;
 
 typedef struct {
     int fixMode;
-    double latitude;
-    double longitude;
-    double altitude;
+        char longitude[MAX_POSITION_LENGTH];
+        char latitude[MAX_POSITION_LENGTH];
+        char altitude[MAX_POSITION_LENGTH];
     char timestamp[10];
 } NMEAData;
 
@@ -60,12 +61,11 @@ void gnssModuleTask(void* parameter) {
     }
 }
 
-
+// NMEA parser task
 void nmeaParserTask(void* parameter) {
     char nmeaLine[MAX_NMEA_LINE_LENGTH];
     size_t lineIndex = 0;
     int previousFixMode = 0;
-    bool isIn3DFixMode = false; // Track 3D fix mode
     NMEAData data;
 
     while (1) {
@@ -87,28 +87,45 @@ void nmeaParserTask(void* parameter) {
 
                 // Parse fix mode, position, and time
                 if (strstr(nmeaLine, "$GPGSA") != NULL) {
-                	//printf("Debug NMEA from nmeaparser line: %s\n", nmeaLine);
-                	// Check if it's entering or leaving 3D fix mode
-                  if (strstr(nmeaLine, ",3,") != NULL) {
-
+                    // Check if it's entering or leaving 3D fix mode
+                    if (strstr(nmeaLine, ",3,") != NULL) {
                         // Entering 3D fix mode
-                        //printf("Nmea parser: Entering 3D fix mode\n");
-                        data.fixMode = 3;
-                        xQueueSend(consumerQueue, &data, 0);
-    
-                  }  else {
-
+                        if (data.fixMode != 3) {
+                            printf("Nmea parser: Entering 3D fix mode\n");
+                            data.fixMode = 3;
+                            xQueueSend(consumerQueue, &data, 0);
+                        }
+                    } else {
                         // Leaving 3D fix mode
-                        //printf("Nmea parser: Leaving 3D fix mode\n");
-                        data.fixMode = 0;
-                        xQueueSend(consumerQueue, &data, 0);                  	
-                  }
+                        if (data.fixMode != 0) {
+                            printf("Nmea parser: Leaving 3D fix mode\n");
+                            data.fixMode = 0;
+                            xQueueSend(consumerQueue, &data, 0);
+                        }
+                    }
                 } else if (strstr(nmeaLine, "$GPZDA") != NULL) {
                     char* token = strtok(nmeaLine, ",");
                     int tokenIndex = 0;
                     while (token != NULL) {
                         if (tokenIndex == 1) {
                             strncpy(data.timestamp, token, sizeof(data.timestamp));
+                        }
+                        token = strtok(NULL, ",");
+                        tokenIndex++;
+                    }
+                } else if (strstr(nmeaLine, "$GPGGA") != NULL) {
+                    char* token = strtok(nmeaLine, ",");
+                    int tokenIndex = 0;
+                    while (token != NULL) {
+                        if (tokenIndex == 2) {
+                            // Longitude
+                            strncpy(data.longitude, token, sizeof(data.longitude));
+                        } else if (tokenIndex == 3) {
+                            // Latitude
+                            strncpy(data.latitude, token, sizeof(data.latitude));
+                        } else if (tokenIndex == 9) {
+                            // Altitude
+                            strncpy(data.altitude, token, sizeof(data.altitude));
                         }
                         token = strtok(NULL, ",");
                         tokenIndex++;
@@ -125,6 +142,7 @@ void nmeaParserTask(void* parameter) {
     }
 }
 
+
 // Consumer task
 void consumerTask(void* parameter) {
     NMEAData data;
@@ -136,7 +154,9 @@ void consumerTask(void* parameter) {
             if (data.fixMode == 3 && !isIn3DFixMode) {
                 // Entering 3D fix mode
                 printf("Consumer task: Entering 3D fix mode\n");
-                printf("Consumer task: Time: %s\n", data.timestamp);                
+                printf("Consumer task: Time: %s\n", data.timestamp); 
+                printf("Position: Longitude=%s, Latitude=%s, Altitude=%s\n", data.longitude, data.latitude, data.altitude);
+					 printf("Position: Longitude=%s, Latitude=%s, Altitude=%s\n", data.longitude, data.latitude, data.altitude);                               
                 isIn3DFixMode = true;
             } else if (data.fixMode == 0 && isIn3DFixMode) {
                 // Leaving 3D fix mode
