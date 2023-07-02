@@ -119,14 +119,14 @@ void nmeaParserTask(void* parameter) {
                     if (strstr(nmeaLine, ",3,") != NULL) {
                         // Entering 3D fix mode
                         if (data.fixMode != 3) {
-                            printf("Nmea parser: Entering 3D fix mode\n");
+                            //printf("Nmea parser: Entering 3D fix mode\n");
                             data.fixMode = 3;
                             xQueueSend(consumerQueue, &data, 0);
                         }
                     } else {
                         // Leaving 3D fix mode
                         if (data.fixMode != 0) {
-                            printf("Nmea parser: Leaving 3D fix mode\n");
+                            //printf("Nmea parser: Leaving 3D fix mode\n");
                             data.fixMode = 0;
                             xQueueSend(consumerQueue, &data, 0);
                         }
