@@ -166,13 +166,25 @@ void nmeaParserTask(void* parameter) {
                     while (token != NULL) {
                         if (tokenIndex == 2) {
                             // Longitude
-                            strncpy(data.longitude, token, sizeof(data.longitude));
+                            if (*token != '\0') {
+                                strncpy(data.longitude, token, sizeof(data.longitude));
+                            } else {
+                                strncpy(data.longitude, "N/A", sizeof(data.longitude));
+                            }
                         } else if (tokenIndex == 3) {
                             // Latitude
-                            strncpy(data.latitude, token, sizeof(data.latitude));
+                            if (*token != '\0') {
+                                strncpy(data.latitude, token, sizeof(data.latitude));
+                            } else {
+                                strncpy(data.latitude, "N/A", sizeof(data.latitude));
+                            }
                         } else if (tokenIndex == 9) {
                             // Altitude
-                            strncpy(data.altitude, token, sizeof(data.altitude));
+                            if (*token != '\0') {
+                                strncpy(data.altitude, token, sizeof(data.altitude));
+                            } else {
+                                strncpy(data.altitude, "N/A", sizeof(data.altitude));
+                            }
                         }
                         token = strtok(NULL, ",");
                         tokenIndex++;
@@ -181,7 +193,6 @@ void nmeaParserTask(void* parameter) {
 
                 // Reset the line buffer index
                 lineIndex = 0;
-             
             }
         } else {
             // No data received, wait for a short while to avoid busy-waiting
@@ -189,6 +200,10 @@ void nmeaParserTask(void* parameter) {
         }
     }
 }
+
+
+
+
 
 
 // Consumer task
@@ -201,20 +216,21 @@ void consumerTask(void* parameter) {
         if (xQueueReceive(consumerQueue, &data, portMAX_DELAY) == pdTRUE) {
             if (data.fixMode == 3 && !isIn3DFixMode) {
                 // Entering 3D fix mode
-                printf("Consumer task: Entering 3D fix mode\n");
-                printf("Consumer task: Time: %s\n", data.timestamp); 
-                printf("Position: Longitude=%s, Latitude=%s, Altitude=%s\n", data.longitude, data.latitude, data.altitude);
-					 printf("Position: Longitude=%s, Latitude=%s, Altitude=%s\n", data.longitude, data.latitude, data.altitude);                               
+                printf("Entering 3D fix mode\n");
+                printf("Time: %s\n", data.timestamp);
+                printf("Position: Longitude=%s, Latitude=%s, Altitude=%s\n", data.longitude != NULL ? data.longitude : "N/A", data.latitude != NULL ? data.latitude : "N/A", data.altitude != NULL ? data.altitude : "N/A");
                 isIn3DFixMode = true;
             } else if (data.fixMode == 0 && isIn3DFixMode) {
                 // Leaving 3D fix mode
-                printf("Consumer task: Leaving 3D fix mode\n");
+                printf("Leaving 3D fix mode\n");
                 isIn3DFixMode = false;
             }
-
         }
     }
 }
+
+
+
 
 
 int main() {
