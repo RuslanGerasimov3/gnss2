@@ -133,7 +133,7 @@ void nmeaParserTask(void* parameter) {
                 nmeaLine[lineIndex] = '\0';
                 // Verify the checksum of the NMEA message
                 bool resChkSum = verifyChecksum(nmeaLine);
-                if (resChkSum/*|| 1*/) printf("Checksum is correct.\n");
+                //if (resChkSum) printf("Checksum is correct.\n");
                 // Parse fix mode, position, and time
                 if (strstr(nmeaLine, "$GPGSA") != NULL) {
                     // Check if it's entering or leaving 3D fix mode
