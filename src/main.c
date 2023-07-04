@@ -164,14 +164,14 @@ void nmeaParserTask(void* parameter) {
                     char* token = strtok(nmeaLine, ",");
                     int tokenIndex = 0;
                     while (token != NULL) {
-                        if (tokenIndex == 2) {
+                        if (tokenIndex == 4) {
                             // Longitude
                             if (*token != '\0') {
                                 strncpy(data.longitude, token, sizeof(data.longitude));
                             } else {
                                 strncpy(data.longitude, "N/A", sizeof(data.longitude));
                             }
-                        } else if (tokenIndex == 3) {
+                        } else if (tokenIndex == 2) {
                             // Latitude
                             if (*token != '\0') {
                                 strncpy(data.latitude, token, sizeof(data.latitude));
