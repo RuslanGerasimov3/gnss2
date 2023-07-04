@@ -9,7 +9,8 @@
 
 #define QUEUE_LENGTH 10
 #define MAX_NMEA_LINE_LENGTH 128
-#define MAX_POSITION_LENGTH 128
+#define MAX_POSITION_LENGTH 32
+#define MAX_INDICATOR_LENGTH 4
 
 // Simulated NMEA data
 
@@ -26,8 +27,10 @@ QueueHandle_t consumerQueue;
 
 typedef struct {
     int fixMode;
-        char longitude[MAX_POSITION_LENGTH];
         char latitude[MAX_POSITION_LENGTH];
+        char ns_indicator[MAX_INDICATOR_LENGTH];    
+        char longitude[MAX_POSITION_LENGTH];
+        char ew_indicator[MAX_INDICATOR_LENGTH];
         char altitude[MAX_POSITION_LENGTH];
     char timestamp[10];
 } NMEAData;
@@ -171,12 +174,27 @@ void nmeaParserTask(void* parameter) {
                             } else {
                                 strncpy(data.longitude, "N/A", sizeof(data.longitude));
                             }
+                        }
+                        if (tokenIndex == 5) {
+                            // E/W Indicator
+                            if (*token != '\0') {
+                                strncpy(data.ew_indicator, token, sizeof(data.longitude));
+                            } else {
+                                strncpy(data.ew_indicator, "N/A", sizeof(data.ew_indicator));
+                            }
                         } else if (tokenIndex == 2) {
                             // Latitude
                             if (*token != '\0') {
                                 strncpy(data.latitude, token, sizeof(data.latitude));
                             } else {
                                 strncpy(data.latitude, "N/A", sizeof(data.latitude));
+                            } 
+                        } else if (tokenIndex == 3) {
+                            // N/S Indicator
+                            if (*token != '\0') {
+                                strncpy(data.ns_indicator, token, sizeof(data.ns_indicator));
+                            } else {
+                                strncpy(data.ns_indicator, "N/A", sizeof(data.ns_indicator));
                             }
                         } else if (tokenIndex == 9) {
                             // Altitude
@@ -218,7 +236,10 @@ void consumerTask(void* parameter) {
                 // Entering 3D fix mode
                 printf("Entering 3D fix mode\n");
                 printf("Time: %s\n", data.timestamp);
-                printf("Position: Longitude=%s, Latitude=%s, Altitude=%s\n", data.longitude != NULL ? data.longitude : "N/A", data.latitude != NULL ? data.latitude : "N/A", data.altitude != NULL ? data.altitude : "N/A");
+                printf("Position: Longitude=%s %s, Latitude=%s %s, Altitude=%s\n", 
+                data.longitude != NULL ? data.longitude : "N/A",data.ew_indicator != NULL ? data.ew_indicator : "N/A", 
+                data.latitude != NULL ? data.latitude : "N/A", data.ns_indicator != NULL ? data.ns_indicator : "N/A",
+                data.altitude != NULL ? data.altitude : "N/A");
                 isIn3DFixMode = true;
             } else if (data.fixMode == 0 && isIn3DFixMode) {
                 // Leaving 3D fix mode
